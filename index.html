@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>IPM Manufacturing Game</title>
+
+<style>
+body{
+    margin:0;
+    font-family:Arial;
+    background:#120a3a;
+    color:white;
+    text-align:center;
+}
+
+.page{display:none;}
+.active{display:block;}
+
+#menu{
+    height:100vh;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+}
+
+.logo{
+    font-size:60px;
+    color:#b45cff;
+    font-weight:bold;
+}
+.sub{color:#00ffe5;margin-bottom:20px;}
+
+input{
+    padding:10px;
+    border:none;
+    border-radius:10px;
+    width:200px;
+    text-align:center;
+}
+
+button{
+    margin-top:10px;
+    padding:12px 25px;
+    border:none;
+    border-radius:12px;
+    background:#00ffe5;
+    font-weight:bold;
+    cursor:pointer;
+    z-index:10;
+}
+
+canvas{
+    background:#1a123f;
+    border:3px solid #b45cff;
+    display:block;
+    margin:auto;
+}
+</style>
+</head>
+
+<body>
+
+<!-- MENU -->
+<div id="menu" class="page active">
+    <div class="logo">IPM GAME</div>
+    <div class="sub">Manufacturing Club</div>
+    <input id="playerName" placeholder="Enter your name">
+    <button id="startBtn">START</button>
+</div>
+
+<!-- GAME -->
+<div id="game" class="page">
+    <canvas id="canvas" width="900" height="350"></canvas>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameover" class="page">
+    <h1>GAME OVER</h1>
+    <h2 id="scoreText"></h2>
+
+    <button id="againBtn">Play Again</button>
+    <button id="newBtn">New Player</button>
+
+    <h3>🏆 TOP 3</h3>
+    <div id="board"></div>
+</div>
+
+<script>
+window.onload = function(){
+
+// ================= VARIABLES =================
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let player, obstacles, speed, timeScore, running;
+let name = "";
+let leaderboard = JSON.parse(localStorage.getItem("ipm_board")) || [];
+
+// ================= BUTTON EVENTS =================
+document.getElementById("startBtn").onclick = startGame;
+document.getElementById("againBtn").onclick = restart;
+document.getElementById("newBtn").onclick = newPlayer;
+
+// ================= START =================
+function startGame(){
+    name = document.getElementById("playerName").value || "Player";
+    showPage("game");
+    reset();
+    running = true;
+    loop();
+}
+
+// ================= RESET =================
+function reset(){
+    player = {x:100,y:260,w:40,h:40,vy:0,ground:true};
+    obstacles = [];
+    speed = 6;
+    timeScore = 0;
+}
+
+// ================= PAGE SWITCH =================
+function showPage(id){
+    document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+}
+
+// ================= INPUT =================
+document.addEventListener("keydown", e=>{
+    if(e.code==="Space") jump();
+});
+
+function jump(){
+    if(player.ground){
+        player.vy = -14;
+        player.ground = false;
+    }
+}
+
+// ================= LOOP =================
+function loop(){
+    if(!running) return;
+
+    update();
+    draw();
+
+    requestAnimationFrame(loop);
+}
+
+// ================= UPDATE =================
+function update(){
+
+    timeScore += 0.05;
+    speed += 0.002;
+
+    // physics
+    player.vy += 0.8;
+    player.y += player.vy;
+
+    if(player.y >= 260){
+        player.y = 260;
+        player.vy = 0;
+        player.ground = true;
+    }
+
+    // spawn
+    if(Math.random() < 0.02){
+        spawnObstacle();
+    }
+
+    obstacles.forEach(o=>o.x -= speed);
+    obstacles = obstacles.filter(o=>o.x > -100);
+
+    // collision
+    obstacles.forEach(o=>{
+        if(collide(player,o)){
+            gameOver();
+        }
+    });
+}
+
+// ================= OBSTACLES =================
+function spawnObstacle(){
+    let type = Math.floor(Math.random()*4);
+
+    if(type===0){
+        obstacles.push({x:900,y:260,w:40,h:40});
+    }
+    else if(type===1){
+        obstacles.push({x:900,y:230,w:40,h:70});
+    }
+    else if(type===2){
+        obstacles.push({x:900,y:260,w:80,h:40});
+    }
+    else{
+        obstacles.push({x:900,y:200,w:40,h:100});
+    }
+}
+
+// ================= COLLISION =================
+function collide(a,b){
+    return (
+        a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y
+    );
+}
+
+// ================= DRAW =================
+function draw(){
+    ctx.clearRect(0,0,900,350);
+
+    // ground
+    ctx.fillStyle="#00ffe5";
+    ctx.fillRect(0,300,900,5);
+
+    // player
+    ctx.fillStyle="#ffffff";
+    ctx.fillRect(player.x,player.y,player.w,player.h);
+
+    // obstacles
+    ctx.fillStyle="#b45cff";
+    obstacles.forEach(o=>{
+        ctx.fillRect(o.x,o.y,o.w,o.h);
+    });
+
+    // text
+    ctx.fillStyle="white";
+    ctx.font="16px Arial";
+    ctx.fillText("Time: "+timeScore.toFixed(1),20,20);
+}
+
+// ================= GAME OVER =================
+function gameOver(){
+    running = false;
+
+    saveScore();
+
+    document.getElementById("scoreText").innerText =
+        name + " - " + timeScore.toFixed(1) + "s";
+
+    showBoard();
+    showPage("gameover");
+}
+
+// ================= SAVE =================
+function saveScore(){
+    let found = leaderboard.find(p=>p.name===name);
+
+    if(found){
+        if(timeScore > found.score){
+            found.score = timeScore;
+        }
+    } else {
+        leaderboard.push({name:name,score:timeScore});
+    }
+
+    localStorage.setItem("ipm_board", JSON.stringify(leaderboard));
+}
+
+// ================= BOARD =================
+function showBoard(){
+    leaderboard.sort((a,b)=>b.score-a.score);
+
+    let html="";
+    for(let i=0;i<Math.min(3,leaderboard.length);i++){
+        html += `<p>${i+1}. ${leaderboard[i].name} - ${leaderboard[i].score.toFixed(1)}s</p>`;
+    }
+
+    document.getElementById("board").innerHTML = html;
+}
+
+// ================= RESTART =================
+function restart(){
+    showPage("game");
+    reset();
+    running = true;
+    loop();
+}
+
+// ================= NEW PLAYER =================
+function newPlayer(){
+    location.reload();
+}
+
+};
+</script>
+
+</body>
+</html>
